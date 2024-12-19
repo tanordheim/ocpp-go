@@ -59,6 +59,10 @@ func (websocket MockWebSocket) TLSConnectionState() *tls.ConnectionState {
 	return nil
 }
 
+func (websocket MockWebSocket) ConnectionMetadata() map[string]string {
+	return nil
+}
+
 func NewMockWebSocket(id string) MockWebSocket {
 	return MockWebSocket{id: id}
 }

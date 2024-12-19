@@ -27,6 +27,7 @@ type ChargePointConnection interface {
 	ID() string
 	RemoteAddr() net.Addr
 	TLSConnectionState() *tls.ConnectionState
+	ConnectionMetadata() map[string]string
 }
 
 type ChargePointConnectionHandler func(chargePoint ChargePointConnection)

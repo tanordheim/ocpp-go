@@ -115,6 +115,7 @@ type Channel interface {
 	ID() string
 	RemoteAddr() net.Addr
 	TLSConnectionState() *tls.ConnectionState
+	ConnectionMetadata() map[string]string
 }
 
 // WebSocket is a wrapper for a single websocket channel.
@@ -129,6 +130,7 @@ type WebSocket struct {
 	forceCloseC        chan error                // used by the readPump to notify a forcefully closed connection to the writePump.
 	pingMessage        chan []byte
 	tlsConnectionState *tls.ConnectionState
+	connectionMetadata map[string]string
 }
 
 // Retrieves the unique Identifier of the websocket (typically, the URL suffix).
@@ -144,6 +146,11 @@ func (websocket *WebSocket) RemoteAddr() net.Addr {
 // Returns the TLS connection state of the connection, if any.
 func (websocket *WebSocket) TLSConnectionState() *tls.ConnectionState {
 	return websocket.tlsConnectionState
+}
+
+// Returns the connection metadata if the connection, if any.
+func (websocket *WebSocket) ConnectionMetadata() map[string]string {
+	return websocket.connectionMetadata
 }
 
 // ConnectionError is a websocket
@@ -259,21 +266,22 @@ type WsServer interface {
 //
 // Use the NewServer or NewTLSServer functions to create a new server.
 type Server struct {
-	connections         map[string]*WebSocket
-	httpServer          *http.Server
-	messageHandler      func(ws Channel, data []byte) error
-	checkClientHandler  func(id string, r *http.Request) bool
-	newClientHandler    func(ws Channel)
-	disconnectedHandler func(ws Channel)
-	basicAuthHandler    func(username string, password string) bool
-	tlsCertificatePath  string
-	tlsCertificateKey   string
-	timeoutConfig       ServerTimeoutConfig
-	upgrader            websocket.Upgrader
-	errC                chan error
-	connMutex           sync.RWMutex
-	addr                *net.TCPAddr
-	httpHandler         *mux.Router
+	connections               map[string]*WebSocket
+	httpServer                *http.Server
+	messageHandler            func(ws Channel, data []byte) error
+	checkClientHandler        func(id string, r *http.Request) bool
+	connectionMetadataHandler func(id string, r *http.Request) map[string]string
+	newClientHandler          func(ws Channel)
+	disconnectedHandler       func(ws Channel)
+	basicAuthHandler          func(username string, password string) bool
+	tlsCertificatePath        string
+	tlsCertificateKey         string
+	timeoutConfig             ServerTimeoutConfig
+	upgrader                  websocket.Upgrader
+	errC                      chan error
+	connMutex                 sync.RWMutex
+	addr                      *net.TCPAddr
+	httpHandler               *mux.Router
 }
 
 // Creates a new simple websocket server (the websockets are not secured).
@@ -321,6 +329,10 @@ func (server *Server) SetMessageHandler(handler func(ws Channel, data []byte) er
 
 func (server *Server) SetCheckClientHandler(handler func(id string, r *http.Request) bool) {
 	server.checkClientHandler = handler
+}
+
+func (server *Server) SetConnectionMetadataHandler(handler func(id string, r *http.Request) map[string]string) {
+	server.connectionMetadataHandler = handler
 }
 
 func (server *Server) SetNewClientHandler(handler func(ws Channel)) {
@@ -526,6 +538,9 @@ out:
 		forceCloseC:        make(chan error, 1),
 		pingMessage:        make(chan []byte, 1),
 		tlsConnectionState: r.TLS,
+	}
+	if server.connectionMetadataHandler != nil {
+		ws.connectionMetadata = server.connectionMetadataHandler(id, r)
 	}
 	log.Debugf("upgraded websocket connection for %s from %s", id, conn.RemoteAddr().String())
 	// If unsupported subprotocol, terminate the connection immediately

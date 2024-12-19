@@ -748,6 +748,37 @@ func TestCustomCheckClientHandler(t *testing.T) {
 	wsServer.Stop()
 }
 
+func TestCustomConnectionMetadataHandler(t *testing.T) {
+	connectionMetadata := make(chan map[string]string)
+	wsServer := newWebsocketServer(t, func(data []byte) ([]byte, error) {
+		return nil, nil
+	})
+	wsServer.SetNewClientHandler(func(ws Channel) {
+		connectionMetadata <- ws.ConnectionMetadata()
+	})
+	wsServer.SetConnectionMetadataHandler(func(clientId string, r *http.Request) map[string]string {
+		return map[string]string{"testKey": "testValue"}
+	})
+	go wsServer.Start(serverPort, serverPath)
+	time.Sleep(500 * time.Millisecond)
+
+	// Test message
+	wsClient := newWebsocketClient(t, func(data []byte) ([]byte, error) {
+		return nil, nil
+	})
+
+	host := fmt.Sprintf("localhost:%v", serverPort)
+	u := url.URL{Scheme: "ws", Host: host, Path: testPath}
+	err := wsClient.Start(u.String())
+	require.Nil(t, err)
+	result := <-connectionMetadata
+	require.NotNil(t, result)
+	require.Contains(t, result, "testKey")
+	// Cleanup
+	wsClient.Stop()
+	wsServer.Stop()
+}
+
 func TestValidClientTLSCertificate(t *testing.T) {
 	// Create self-signed TLS certificate
 	clientCertFilename := "/tmp/client.pem"
